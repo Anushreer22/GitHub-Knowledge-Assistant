@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Data & Datasets
+data/raw/
+data/processed/
+data/qa/
+data/splits/
+data/review/
+data/checkpoints/
+data/indexes/
+
+# ML checkpoints & large models
+*.pt
+*.pth
+*.ckpt
+*.joblib
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs & temp
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

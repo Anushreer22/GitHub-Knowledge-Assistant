@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "question_id",
+    "repo_id",
+    "question",
+    "relevant_chunk_ids",
+    "relevant_files",
+    "generation_method",
+    "review_status"
+  ],
+  "properties": {
+    "question_id": {
+      "type": "string"
+    },
+    "repo_id": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "expected_answer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "relevant_chunk_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "relevant_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generation_method": {
+      "type": "string"
+    },
+    "review_status": {
+      "enum": [
+        "needs_review",
+        "approved",
+        "rejected"
+      ]
+    },
+    "split": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

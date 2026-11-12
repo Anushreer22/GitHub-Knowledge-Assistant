@@ -1,0 +1,131 @@
+{
+  "status": "PASS",
+  "timestamp": null,
+  "summary": {
+    "status": "PASS",
+    "total_chunks": 243411,
+    "total_qa": 2000,
+    "total_negatives": 2000,
+    "total_errors": 0,
+    "total_warnings": 0
+  },
+  "chunk_validation": {
+    "total_chunks": 243411,
+    "unique_chunk_ids": 243411,
+    "duplicate_chunk_count": 0,
+    "empty_code_count": 0,
+    "invalid_line_range_count": 0,
+    "languages": {
+      "python": 7466,
+      "java": 235945
+    },
+    "repositories": {
+      "public-apis__public-apis": 59,
+      "EbookFoundation__free-programming-books": 6,
+      "NationalSecurityAgency__ghidra": 208244,
+      "iluwatar__java-design-patterns": 7679,
+      "pallets__werkzeug": 2249,
+      "bottlepy__bottle": 640,
+      "marshmallow-code__marshmallow": 1668,
+      "google__gson": 3763,
+      "square__retrofit": 3448,
+      "cbeust__testng": 15655
+    },
+    "top_chunk_types": [
+      [
+        "method_declaration",
+        192242
+      ],
+      [
+        "class_declaration",
+        22198
+      ],
+      [
+        "constructor_declaration",
+        17743
+      ],
+      [
+        "FunctionDef",
+        6162
+      ],
+      [
+        "interface_declaration",
+        2272
+      ],
+      [
+        "ClassDef",
+        1171
+      ],
+      [
+        "enum_declaration",
+        1098
+      ],
+      [
+        "fallback_block",
+        480
+      ],
+      [
+        "module",
+        45
+      ]
+    ]
+  },
+  "qa_validation": {
+    "total_qa": 2000,
+    "unique_questions": 2000,
+    "duplicate_question_count": 0,
+    "missing_chunk_reference_count": 0,
+    "missing_answer_count": 0,
+    "review_statuses": {
+      "pending": 2000
+    },
+    "generation_methods": {
+      "function_method_identification": 807,
+      "file_location": 1001,
+      "class_identification": 192
+    }
+  },
+  "negative_validation": {
+    "total_negatives": 2000,
+    "unique_pairs": 2000,
+    "invalid_negative_references": 0,
+    "identical_pos_neg_errors": 0,
+    "generation_methods": {
+      "same_repo_hard_negative": 396,
+      "random": 402,
+      "similar_name_different_purpose": 410,
+      "different_function_same_file": 393,
+      "same_language_different_repo": 399
+    }
+  },
+  "split_validation": {
+    "train_repositories": [
+      "bottlepy__bottle",
+      "cbeust__testng",
+      "google__gson",
+      "iluwatar__java-design-patterns",
+      "marshmallow-code__marshmallow",
+      "pallets__werkzeug",
+      "public-apis__public-apis",
+      "square__retrofit"
+    ],
+    "validation_repositories": [
+      "EbookFoundation__free-programming-books"
+    ],
+    "test_repositories": [
+      "NationalSecurityAgency__ghidra"
+    ],
+    "train_chunks": 35161,
+    "validation_chunks": 6,
+    "test_chunks": 208244,
+    "leakage_errors": 0
+  },
+  "structural_errors": [],
+  "warnings": [],
+  "human_review_summary": {
+    "note": "Structural validation checks schema, references, line ranges, and leakage. Semantic accuracy and license compliance require human review.",
+    "pending_review_count": 2000,
+    "approved_count": 0,
+    "rejected_count": 0
+  }
+}

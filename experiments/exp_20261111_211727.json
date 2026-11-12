@@ -1,0 +1,59 @@
+{
+  "experiment_id": "exp_20261111_211727",
+  "timestamp": "2026-11-11T21:17:27.603539",
+  "model_architecture": {
+    "type": "CustomTransformerEncoderFromScratch",
+    "hidden_dim": 256,
+    "num_layers": 4,
+    "num_heads": 4,
+    "ff_dim": 1024,
+    "max_seq_len": 512,
+    "vocab_size": 8000,
+    "pretrained": false
+  },
+  "tokenizer_config": {
+    "type": "ByteLevelBPE",
+    "vocab_size": 8000
+  },
+  "dataset_version": "v1.0",
+  "training_parameters": {
+    "batch_size": 4,
+    "lr": 0.0001,
+    "epochs": 2,
+    "seed": 42,
+    "training_samples": 12,
+    "device": "cpu",
+    "elapsed_seconds": 48.09
+  },
+  "results": {
+    "best_epoch": 2,
+    "best_mrr": 0.2687,
+    "history": {
+      "epochs": [
+        1,
+        2
+      ],
+      "train_loss": [
+        2.0197,
+        1.0382
+      ],
+      "val_loss": [],
+      "recall@1": [
+        0.1379,
+        0.1897
+      ],
+      "recall@5": [
+        0.1897,
+        0.3276
+      ],
+      "recall@10": [
+        0.3276,
+        0.4397
+      ],
+      "mrr": [
+        0.1905,
+        0.2687
+      ]
+    }
+  }
+}

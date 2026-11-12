@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "question_id",
+    "repo_id",
+    "question",
+    "expected_answer",
+    "relevant_chunk_ids",
+    "relevant_files",
+    "difficulty",
+    "answerable",
+    "generation_method",
+    "review_status",
+    "source_chunk_id",
+    "split"
+  ],
+  "properties": {
+    "question_id": {
+      "type": "string"
+    },
+    "repo_id": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "expected_answer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "relevant_chunk_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "relevant_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "difficulty": {
+      "type": "string"
+    },
+    "answerable": {
+      "type": "boolean"
+    },
+    "generation_method": {
+      "type": "string"
+    },
+    "review_status": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "needs_correction",
+        "needs_review"
+      ]
+    },
+    "source_chunk_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "split": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewer_notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewer_decision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "corrected_question": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "corrected_expected_answer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verified_relevant_chunk_ids": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

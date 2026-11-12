@@ -1,0 +1,1 @@
+.env\n.venv/\n__pycache__/\ndata/raw/\ndata/metadata/\ndata/processed/\ndata/qa/\ndata/splits/\n*.pyc\n

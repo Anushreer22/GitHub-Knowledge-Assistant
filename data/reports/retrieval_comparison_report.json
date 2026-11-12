@@ -1,0 +1,224 @@
+{
+  "evaluation_summary": {
+    "eval_query_count": 50,
+    "eval_source": "C:\\Users\\ANUSHREE R\\GitHub-Knowledge-Assistant\\data\\splits\\test_qa.jsonl"
+  },
+  "metrics_comparison": {
+    "bm25": {
+      "query_count": 50,
+      "recall@1": 0.64,
+      "recall@5": 0.74,
+      "recall@10": 0.78,
+      "mrr": 0.6887,
+      "precision@5": 0.148,
+      "per_language_mrr": {
+        "java": 0.6887
+      },
+      "successful_examples": [
+        {
+          "question": "Where is the AbstractDBAnnotationValidator class defined?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "hit_rank": 1,
+          "top_retrieved": [
+            "466c6475c7c80b0892c4",
+            "aafbbc26bd5d0954591f",
+            "6591e638510b7cf85ad3"
+          ]
+        },
+        {
+          "question": "Which file contains the implementation of AbstractDBAnnotationValidator?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "hit_rank": 1,
+          "top_retrieved": [
+            "466c6475c7c80b0892c4",
+            "aafbbc26bd5d0954591f",
+            "6591e638510b7cf85ad3"
+          ]
+        },
+        {
+          "question": "Where is the AbstractDBAnnotationValidator constructor implemented?",
+          "target_chunk": "aafbbc26bd5d0954591f",
+          "hit_rank": 1,
+          "top_retrieved": [
+            "aafbbc26bd5d0954591f",
+            "466c6475c7c80b0892c4",
+            "2652d8e471ef83aadcc7"
+          ]
+        }
+      ],
+      "failed_examples": [
+        {
+          "question": "Where is the get method implemented?",
+          "target_chunk": "ab20fb7d33e584691589",
+          "top_retrieved": [
+            "9b83d6910f6fd9342404",
+            "d5ec1704be16bceaa19f",
+            "3343041b0a10e9e89aa7"
+          ]
+        },
+        {
+          "question": "Which file contains the implementation of get?",
+          "target_chunk": "ab20fb7d33e584691589",
+          "top_retrieved": [
+            "dc6351cefa06aec16f80",
+            "a431075db938e7a782b7",
+            "c53088fd5a7b43b8ab10"
+          ]
+        },
+        {
+          "question": "Where is the validate method implemented?",
+          "target_chunk": "b77368605f01ed55032b",
+          "top_retrieved": [
+            "1366cbbde417d738ad72",
+            "9b83d6910f6fd9342404",
+            "d5ec1704be16bceaa19f"
+          ]
+        }
+      ]
+    },
+    "dense": {
+      "query_count": 50,
+      "recall@1": 0.0,
+      "recall@5": 0.02,
+      "recall@10": 0.06,
+      "mrr": 0.0145,
+      "precision@5": 0.004,
+      "per_language_mrr": {
+        "java": 0.0145
+      },
+      "successful_examples": [
+        {
+          "question": "Where is the AccessSpec constructor implemented?",
+          "target_chunk": "7d41af4cae3309ad0b2e",
+          "hit_rank": 10,
+          "top_retrieved": [
+            "51d6b83ad1dc984997a1",
+            "af5c5bf7e20dca6be424",
+            "e2bcc062279cc0840f4f"
+          ]
+        },
+        {
+          "question": "Where is the isSameOrMorePermissive method implemented?",
+          "target_chunk": "1da0fec1b352ece3ac71",
+          "hit_rank": 8,
+          "top_retrieved": [
+            "ee8f886e221c943a82df",
+            "0c857676eea561d6e970",
+            "51d6b83ad1dc984997a1"
+          ]
+        },
+        {
+          "question": "Where is the getSupportedSourceVersion method implemented?",
+          "target_chunk": "9c50a78e67e78a9ea4a6",
+          "hit_rank": 2,
+          "top_retrieved": [
+            "51d6b83ad1dc984997a1",
+            "9c50a78e67e78a9ea4a6",
+            "47777ccd8baa4adb3ab7"
+          ]
+        }
+      ],
+      "failed_examples": [
+        {
+          "question": "Where is the AbstractDBAnnotationValidator class defined?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "top_retrieved": [
+            "7570e3d2ebf5b4696714",
+            "64329772fb743376b1db",
+            "aa32523406b811d56907"
+          ]
+        },
+        {
+          "question": "Which file contains the implementation of AbstractDBAnnotationValidator?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "top_retrieved": [
+            "7570e3d2ebf5b4696714",
+            "bff551ed9d31461afccb",
+            "64329772fb743376b1db"
+          ]
+        },
+        {
+          "question": "Where is the AbstractDBAnnotationValidator constructor implemented?",
+          "target_chunk": "aafbbc26bd5d0954591f",
+          "top_retrieved": [
+            "7570e3d2ebf5b4696714",
+            "954f119ee7d667b11007",
+            "9e27b8a07205f5bdb218"
+          ]
+        }
+      ]
+    },
+    "hybrid": {
+      "query_count": 50,
+      "recall@1": 0.5,
+      "recall@5": 0.72,
+      "recall@10": 0.74,
+      "mrr": 0.5753,
+      "precision@5": 0.144,
+      "per_language_mrr": {
+        "java": 0.5753
+      },
+      "successful_examples": [
+        {
+          "question": "Where is the AbstractDBAnnotationValidator class defined?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "hit_rank": 6,
+          "top_retrieved": [
+            "aafbbc26bd5d0954591f",
+            "9e27b8a07205f5bdb218",
+            "59c91f544e624326dc06"
+          ]
+        },
+        {
+          "question": "Which file contains the implementation of AbstractDBAnnotationValidator?",
+          "target_chunk": "466c6475c7c80b0892c4",
+          "hit_rank": 4,
+          "top_retrieved": [
+            "aafbbc26bd5d0954591f",
+            "1c5522a3dbe963f3545a",
+            "ec64aaaa8eb151385daf"
+          ]
+        },
+        {
+          "question": "Where is the AbstractDBAnnotationValidator constructor implemented?",
+          "target_chunk": "aafbbc26bd5d0954591f",
+          "hit_rank": 5,
+          "top_retrieved": [
+            "ec64aaaa8eb151385daf",
+            "9e27b8a07205f5bdb218",
+            "59c91f544e624326dc06"
+          ]
+        }
+      ],
+      "failed_examples": [
+        {
+          "question": "Where is the get method implemented?",
+          "target_chunk": "ab20fb7d33e584691589",
+          "top_retrieved": [
+            "9b83d6910f6fd9342404",
+            "51d6b83ad1dc984997a1",
+            "d5ec1704be16bceaa19f"
+          ]
+        },
+        {
+          "question": "Which file contains the implementation of get?",
+          "target_chunk": "ab20fb7d33e584691589",
+          "top_retrieved": [
+            "dc6351cefa06aec16f80",
+            "7452d6cf8eb6369d76c5",
+            "a431075db938e7a782b7"
+          ]
+        },
+        {
+          "question": "Where is the validate method implemented?",
+          "target_chunk": "b77368605f01ed55032b",
+          "top_retrieved": [
+            "9e27b8a07205f5bdb218",
+            "59c91f544e624326dc06",
+            "1366cbbde417d738ad72"
+          ]
+        }
+      ]
+    }
+  }
+}

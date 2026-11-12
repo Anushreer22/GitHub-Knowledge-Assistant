@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "repo_id",
+    "commit_sha",
+    "file_path",
+    "language",
+    "chunk_id",
+    "chunk_type",
+    "chunk_name",
+    "code_text",
+    "start_line",
+    "end_line",
+    "imports",
+    "symbols_defined",
+    "symbols_used",
+    "parser_status"
+  ],
+  "properties": {
+    "repo_id": {
+      "type": "string"
+    },
+    "commit_sha": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "file_path": {
+      "type": "string"
+    },
+    "language": {
+      "enum": [
+        "python",
+        "java"
+      ]
+    },
+    "chunk_id": {
+      "type": "string"
+    },
+    "chunk_type": {
+      "type": "string"
+    },
+    "chunk_name": {
+      "type": "string"
+    },
+    "code_text": {
+      "type": "string"
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "end_line": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "symbols_defined": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "symbols_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "parser_status": {
+      "type": "string"
+    }
+  }
+}

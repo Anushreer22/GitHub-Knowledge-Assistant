@@ -1,0 +1,21 @@
+{
+  "tokenizer_type": "ByteLevelBPE",
+  "vocab_size": 8000,
+  "special_tokens": [
+    "<pad>",
+    "<s>",
+    "</s>",
+    "<unk>",
+    "<mask>"
+  ],
+  "pad_token": "<pad>",
+  "pad_token_id": 0,
+  "bos_token": "<s>",
+  "bos_token_id": 1,
+  "eos_token": "</s>",
+  "eos_token_id": 2,
+  "unk_token": "<unk>",
+  "unk_token_id": 3,
+  "trained_on": "C:\\Users\\ANUSHREE R\\GitHub-Knowledge-Assistant\\data\\splits\\train_chunks.jsonl",
+  "leakage_safe": true
+}
