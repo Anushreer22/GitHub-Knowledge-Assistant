@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 import numpy as np
 
@@ -54,6 +54,22 @@ class EmbeddingStore:
 
         self.metadata.extend(valid_meta)
         return len(valid_meta)
+
+    def remove_chunks(self, remove_chunk_ids: Set[str]) -> int:
+        """Incrementally remove chunks matching given IDs from embeddings and metadata."""
+        if not remove_chunk_ids or not self.metadata:
+            return 0
+
+        keep_indices = [i for i, m in enumerate(self.metadata) if m["chunk_id"] not in remove_chunk_ids]
+        removed_count = len(self.metadata) - len(keep_indices)
+        if removed_count == 0:
+            return 0
+
+        self.metadata = [self.metadata[i] for i in keep_indices]
+        if self.embeddings is not None and len(self.embeddings) > 0:
+            self.embeddings = self.embeddings[keep_indices]
+        self.chunk_id_to_idx = {m["chunk_id"]: idx for idx, m in enumerate(self.metadata)}
+        return removed_count
 
     def save(self) -> None:
         """Persist embeddings matrix and metadata to disk."""

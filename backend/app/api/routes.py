@@ -1,9 +1,24 @@
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+import re
+import json
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 
+from dataset_pipeline.common import DATA
 from ..schemas.retrieval_schemas import (
     HealthResponse,
     RepositoryInfo,
+    AddRepositoryRequest,
+    AddRepositoryResponse,
+    SyncRepositoryResponse,
+    IndexingHistoryItem,
+    UserProfile,
+    AuthResponse,
+    RegisterRequest,
+    LoginRequest,
+    SaveRepoRequest,
+    RecordSearchRequest,
     IndexRequest,
     IndexResponse,
     SearchRequest,
@@ -12,9 +27,22 @@ from ..schemas.retrieval_schemas import (
     QueryResponse,
     FileInfo,
     ChunkDetailResponse,
-    EvidenceItemSchema
+    EvidenceItemSchema,
+    SymbolRelationshipsResponse,
+    FeedbackRequest,
+    FeedbackResponse
 )
 from ..services.retrieval_service import RetrievalService
+from ..services.github_service import add_and_index_github_repo
+from ..services.update_service import sync_repository, get_indexing_history
+from ..services.auth_service import (
+    register_user,
+    authenticate_user,
+    save_repository_for_user,
+    remove_saved_repository_for_user,
+    record_search_for_user
+)
+from .deps import get_current_user, get_current_user_optional
 
 router = APIRouter()
 
@@ -35,11 +63,78 @@ def get_health():
     repos = service.list_repositories()
     return HealthResponse(
         status="ok",
-        version="4.0.0",
+        version="5.0.0",
         repositories_count=len(repos),
         bm25_index_ready=service.bm25 is not None and len(service.bm25.corpus_meta) > 0,
         dense_index_ready=service.dense is not None and len(service.dense.store) > 0
     )
+
+
+# -------------------------------------------------------------------------
+# Phase 5C: Authentication & User Accounts Endpoints
+# -------------------------------------------------------------------------
+
+@router.post("/api/auth/register", response_model=AuthResponse, tags=["Authentication"])
+def register(request: RegisterRequest):
+    """Register a new user account with secure PBKDF2-HMAC password hashing and JWT issuance."""
+    try:
+        res = register_user(request.username, request.email, request.password)
+        return AuthResponse(
+            token=res["token"],
+            user=UserProfile(**res["user"])
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+
+
+@router.post("/api/auth/login", response_model=AuthResponse, tags=["Authentication"])
+def login(request: LoginRequest):
+    """Authenticate with username and password, returning JWT access token."""
+    try:
+        res = authenticate_user(request.username, request.password)
+        return AuthResponse(
+            token=res["token"],
+            user=UserProfile(**res["user"])
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(ve)
+        )
+
+
+@router.get("/api/auth/me", response_model=UserProfile, tags=["Authentication"])
+def get_me(user: Dict[str, Any] = Depends(get_current_user)):
+    """Fetch profile of currently authenticated user."""
+    return UserProfile(**user)
+
+
+@router.post("/api/user/saved-repositories", response_model=List[str], tags=["User Collections"])
+def save_repo(request: SaveRepoRequest, user: Dict[str, Any] = Depends(get_current_user)):
+    """Add a repository to the user's personal saved collection."""
+    return save_repository_for_user(user["user_id"], request.repo_id)
+
+
+@router.delete("/api/user/saved-repositories/{repository_id}", response_model=List[str], tags=["User Collections"])
+def delete_saved_repo(repository_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Remove a repository from the user's personal saved collection."""
+    validate_safe_id(repository_id, "repository_id")
+    return remove_saved_repository_for_user(user["user_id"], repository_id)
+
+
+@router.get("/api/user/saved-repositories", response_model=List[str], tags=["User Collections"])
+def get_saved_repos(user: Dict[str, Any] = Depends(get_current_user)):
+    """List repositories saved in user's personal collection."""
+    return user.get("saved_repositories", [])
+
+
+@router.get("/api/user/search-history", response_model=List[Dict[str, Any]], tags=["User Collections"])
+def get_search_history(user: Dict[str, Any] = Depends(get_current_user)):
+    """Retrieve search and question history for authenticated user."""
+    return user.get("search_history", [])
 
 
 @router.get("/api/repositories", response_model=List[RepositoryInfo], tags=["Repositories"])
@@ -48,6 +143,66 @@ def list_repositories():
     service = RetrievalService.get_instance()
     repos = service.list_repositories()
     return [RepositoryInfo(**r) for r in repos]
+
+
+@router.post("/api/repositories/add", response_model=AddRepositoryResponse, tags=["Repositories"])
+def add_repository(request: AddRepositoryRequest):
+    """Validate, fetch metadata, shallow clone, parse AST chunks, and index a live public GitHub repository."""
+    try:
+        result = add_and_index_github_repo(
+            url=request.url,
+            max_chunks=request.max_chunks or 500
+        )
+        return AddRepositoryResponse(**result)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except RuntimeError as re:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(re)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Live repository ingestion failed: {str(e)}"
+        )
+
+
+@router.post("/api/repositories/{repository_id}/sync", response_model=SyncRepositoryResponse, tags=["Repositories"])
+def update_repository(repository_id: str):
+    """Detect remote commits, inspect git diff, prune outdated chunks, generate new AST chunks, and sync indexes."""
+    validate_safe_id(repository_id, "repository_id")
+    try:
+        res = sync_repository(repository_id)
+        return SyncRepositoryResponse(**res)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(ve)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Incremental sync failed: {str(e)}"
+        )
+
+
+@router.get("/api/repositories/{repository_id}/history", response_model=List[IndexingHistoryItem], tags=["Repositories"])
+def get_repository_history(repository_id: str):
+    """Fetch persistent indexing history for a specific repository."""
+    validate_safe_id(repository_id, "repository_id")
+    history = get_indexing_history(repository_id)
+    return [IndexingHistoryItem(**h) for h in history]
+
+
+@router.get("/api/history", response_model=List[IndexingHistoryItem], tags=["Repositories"])
+def get_all_indexing_history():
+    """Fetch global indexing history across all repositories."""
+    history = get_indexing_history()
+    return [IndexingHistoryItem(**h) for h in history]
 
 
 @router.post("/api/repositories/index", response_model=IndexResponse, tags=["Indexing"])
@@ -70,10 +225,12 @@ def trigger_indexing(request: IndexRequest):
 
 
 @router.post("/api/search", response_model=SearchResponse, tags=["Retrieval"])
-def search_chunks(request: SearchRequest):
+def search_chunks(request: SearchRequest, user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
     """Execute BM25, Dense, or Hybrid search across indexed code chunks."""
     service = RetrievalService.get_instance()
     try:
+        if user:
+            record_search_for_user(user["user_id"], request.query, request.mode)
         results = service.search(
             query=request.query,
             top_k=request.top_k,
@@ -110,10 +267,12 @@ def search_chunks(request: SearchRequest):
 
 
 @router.post("/api/query", response_model=QueryResponse, tags=["QA"])
-def query_knowledge_assistant(request: QueryRequest):
+def query_knowledge_assistant(request: QueryRequest, user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
     """Ask a natural-language question and receive an evidence-grounded answer with source citations."""
     service = RetrievalService.get_instance()
     try:
+        if user:
+            record_search_for_user(user["user_id"], request.question, request.mode)
         qa_result = service.query_qa(
             question=request.question,
             top_k=request.top_k,
@@ -192,4 +351,38 @@ def get_chunk_detail(repository_id: str, chunk_id: str):
         imports=chunk.get("imports", []),
         symbols_defined=chunk.get("symbols_defined", []),
         symbols_used=chunk.get("symbols_used", [])
+    )
+
+
+@router.get("/api/repositories/{repository_id}/symbols/{symbol_name}", response_model=SymbolRelationshipsResponse, tags=["Symbols"])
+def get_symbol_relationships(repository_id: str, symbol_name: str):
+    """Fetch complete static symbol relationships including definitions, callers, callees, inheritance, and tests."""
+    validate_safe_id(repository_id, "repository_id")
+    service = RetrievalService.get_instance()
+    res = service.get_symbol_relationships(symbol_name=symbol_name, repo_id=repository_id)
+    return SymbolRelationshipsResponse(**res)
+
+
+@router.post("/api/feedback", response_model=FeedbackResponse, tags=["Feedback"])
+def submit_feedback(request: FeedbackRequest, user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
+    """Submit user feedback on answer accuracy, citations, and relevance."""
+    feedback_file = DATA / "reports" / "feedback.jsonl"
+    feedback_file.parent.mkdir(parents=True, exist_ok=True)
+    feedback_id = f"fb_{uuid.uuid4().hex[:8]}"
+    entry = {
+        "feedback_id": feedback_id,
+        "user_id": user["user_id"] if user else "anonymous",
+        "query_or_question": request.query_or_question,
+        "feedback_type": request.feedback_type,
+        "citation": request.citation,
+        "notes": request.notes,
+        "repo_id": request.repo_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    with open(feedback_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+    return FeedbackResponse(
+        status="received",
+        feedback_id=feedback_id,
+        message=f"Thank you for your feedback ({request.feedback_type})."
     )

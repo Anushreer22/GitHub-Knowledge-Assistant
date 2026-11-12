@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 from collections import defaultdict
 
 from dataset_pipeline.common import DATA, stream_read
@@ -9,6 +9,7 @@ from retrieval.dense_index import DenseRetriever
 from retrieval.hybrid_retriever import HybridRetriever
 from retrieval.context_expander import ContextExpander
 from retrieval.answer_engine import AnswerEngine
+from retrieval.symbol_graph import SymbolGraphIndex
 
 
 class RetrievalService:
@@ -27,6 +28,7 @@ class RetrievalService:
         self.hybrid: Optional[HybridRetriever] = None
         self.expander: Optional[ContextExpander] = None
         self.answer_engine: Optional[AnswerEngine] = None
+        self.symbol_graph: Optional[SymbolGraphIndex] = None
 
         self._load_or_init()
 
@@ -50,12 +52,13 @@ class RetrievalService:
         if self.bm25 and self.dense:
             self.hybrid = HybridRetriever(self.bm25, self.dense)
 
-        # Context expander
+        # Context expander & Symbol graph
         if self.bm25 and self.bm25.corpus_meta:
             chunk_dict = {m["chunk_id"]: m for m in self.bm25.corpus_meta}
             self.expander = ContextExpander(chunk_dict)
+            self.symbol_graph = SymbolGraphIndex(self.bm25.corpus_meta)
             if self.hybrid:
-                self.answer_engine = AnswerEngine(self.hybrid, self.expander)
+                self.answer_engine = AnswerEngine(self.hybrid, self.expander, self.symbol_graph)
 
     def trigger_indexing(self, max_chunks: Optional[int] = 10000) -> Dict[str, Any]:
         """Build or update persistent BM25 and Dense indexes."""
@@ -74,16 +77,90 @@ class RetrievalService:
         self.dense = DenseRetriever(store_dir=self.dense_store_dir)
         dense_added = self.dense.build_index(chunks)
 
-        # 3. Rebuild Hybrid & Context Expander
+        # 3. Rebuild Hybrid & Context Expander & Symbol Graph
         self.hybrid = HybridRetriever(self.bm25, self.dense)
         chunk_dict = {m["chunk_id"]: m for m in self.bm25.corpus_meta}
         self.expander = ContextExpander(chunk_dict)
-        self.answer_engine = AnswerEngine(self.hybrid, self.expander)
+        self.symbol_graph = SymbolGraphIndex(self.bm25.corpus_meta)
+        self.answer_engine = AnswerEngine(self.hybrid, self.expander, self.symbol_graph)
 
         return {
             "bm25_count": len(self.bm25.corpus_meta),
             "dense_count": len(self.dense.store),
             "status": "success"
+        }
+
+    def add_repository_chunks(self, new_chunks: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Incrementally update BM25 index, Dense index, and ContextExpander with new repository chunks."""
+        if not new_chunks:
+            return {"bm25_added": 0, "dense_added": 0}
+
+        bm25_added = 0
+        dense_added = 0
+
+        if self.bm25:
+            bm25_added = self.bm25.add_chunks(new_chunks)
+
+        if self.dense:
+            dense_added = self.dense.build_index(new_chunks)
+            self.dense.store.save()
+
+        # Hot-reload ContextExpander, SymbolGraph, and AnswerEngine with updated metadata
+        if self.bm25 and self.bm25.corpus_meta:
+            chunk_dict = {m["chunk_id"]: m for m in self.bm25.corpus_meta}
+            self.expander = ContextExpander(chunk_dict)
+            if self.symbol_graph:
+                self.symbol_graph.build_graph(new_chunks)
+            else:
+                self.symbol_graph = SymbolGraphIndex(self.bm25.corpus_meta)
+            if self.hybrid:
+                self.answer_engine = AnswerEngine(self.hybrid, self.expander, self.symbol_graph)
+
+        return {
+            "bm25_added": bm25_added,
+            "dense_added": dense_added
+        }
+
+    def remove_and_update_repository_chunks(
+        self,
+        remove_chunk_ids: Set[str],
+        new_chunks: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """Atomically remove outdated chunks and add new chunks across BM25 and Dense indexes."""
+        bm25_removed = 0
+        bm25_added = 0
+        dense_removed = 0
+        dense_added = 0
+
+        if self.bm25:
+            bm25_removed, bm25_added = self.bm25.remove_and_update_chunks(remove_chunk_ids, new_chunks)
+
+        if self.dense:
+            if remove_chunk_ids:
+                dense_removed = self.dense.store.remove_chunks(remove_chunk_ids)
+            if new_chunks:
+                dense_added = self.dense.build_index(new_chunks)
+            self.dense.store.save()
+
+        # Hot-reload ContextExpander, SymbolGraph, and AnswerEngine with updated metadata
+        if self.bm25 and self.bm25.corpus_meta:
+            chunk_dict = {m["chunk_id"]: m for m in self.bm25.corpus_meta}
+            self.expander = ContextExpander(chunk_dict)
+            if self.symbol_graph:
+                if remove_chunk_ids:
+                    self.symbol_graph.remove_chunks(remove_chunk_ids)
+                if new_chunks:
+                    self.symbol_graph.build_graph(new_chunks)
+            else:
+                self.symbol_graph = SymbolGraphIndex(self.bm25.corpus_meta)
+            if self.hybrid:
+                self.answer_engine = AnswerEngine(self.hybrid, self.expander, self.symbol_graph)
+
+        return {
+            "bm25_removed": bm25_removed,
+            "bm25_added": bm25_added,
+            "dense_removed": dense_removed,
+            "dense_added": dense_added
         }
 
     def list_repositories(self) -> List[Dict[str, Any]]:
@@ -155,3 +232,12 @@ class RetrievalService:
         if not self.answer_engine:
             raise RuntimeError("Answer engine is not initialized. Please trigger indexing first.")
         return self.answer_engine.answer_question(question=question, repo_id=repo_id, top_k=top_k, mode=mode)
+
+    def get_symbol_relationships(self, symbol_name: str, repo_id: Optional[str] = None) -> Dict[str, Any]:
+        """Fetch static relationships (definitions, callers, callees, inheritance, tests) for a symbol."""
+        if not self.symbol_graph:
+            if self.bm25 and self.bm25.corpus_meta:
+                self.symbol_graph = SymbolGraphIndex(self.bm25.corpus_meta)
+            else:
+                self.symbol_graph = SymbolGraphIndex()
+        return self.symbol_graph.get_symbol_relationships(symbol_name=symbol_name, repo_id=repo_id)

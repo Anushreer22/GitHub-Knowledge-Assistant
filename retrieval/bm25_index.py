@@ -2,7 +2,7 @@ import re
 import pickle
 import argparse
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 from rank_bm25 import BM25Okapi
 from dataset_pipeline.common import DATA, stream_read
@@ -90,8 +90,133 @@ class BM25Retriever:
             self.corpus_meta.append(meta)
             self.chunk_id_to_idx[cid] = idx
 
+        self.tokenized_corpus = tokenized_corpus
         self.bm25 = BM25Okapi(tokenized_corpus)
         print(f"BM25 index built with {len(self.corpus_meta)} documents.")
+
+    def add_chunks(self, new_chunks: List[Dict[str, Any]], max_snippet_len: int = 400) -> int:
+        """Incrementally add new chunks to existing BM25 index and rebuild internal ranking structures."""
+        if not new_chunks:
+            return 0
+
+        unique_new = [c for c in new_chunks if c["chunk_id"] not in self.chunk_id_to_idx]
+        if not unique_new:
+            return 0
+
+        # Reconstruct tokenized corpus for existing documents if not in memory
+        tokenized_corpus = getattr(self, "tokenized_corpus", None)
+        if tokenized_corpus is None or len(tokenized_corpus) != len(self.corpus_meta):
+            tokenized_corpus = []
+            for m in self.corpus_meta:
+                symbols = " ".join(m.get("symbols_defined", []) + m.get("symbols_used", []))
+                doc_text = f"{m.get('file_path', '')} {m.get('chunk_name', '')} {symbols}\n{m.get('code_text', '')}"
+                tokenized_corpus.append(tokenize_code(doc_text))
+
+        start_idx = len(self.corpus_meta)
+        for idx_offset, c in enumerate(unique_new):
+            cid = c["chunk_id"]
+            code_text = c.get("code_text", "")
+            fpath = c.get("file_path", "")
+            name = c.get("chunk_name", "")
+            symbols = " ".join(c.get("symbols_defined", []) + c.get("symbols_used", []))
+
+            doc_text = f"{fpath} {name} {symbols}\n{code_text}"
+            tokens = tokenize_code(doc_text)
+            tokenized_corpus.append(tokens)
+            self.corpus_tokens.append(set(tokens))
+
+            meta = {
+                "chunk_id": cid,
+                "repo_id": c.get("repo_id", ""),
+                "file_path": fpath,
+                "start_line": c.get("start_line", 1),
+                "end_line": c.get("end_line", 1),
+                "chunk_type": c.get("chunk_type", ""),
+                "chunk_name": name,
+                "language": c.get("language", ""),
+                "symbols_defined": c.get("symbols_defined", []),
+                "symbols_used": c.get("symbols_used", []),
+                "imports": c.get("imports", []),
+                "code_snippet": code_text[:max_snippet_len],
+                "code_text": code_text,
+                "citation": f"{c.get('repo_id', '')}:{fpath}#L{c.get('start_line', 1)}-L{c.get('end_line', 1)}"
+            }
+            self.corpus_meta.append(meta)
+            self.chunk_id_to_idx[cid] = start_idx + idx_offset
+
+        self.tokenized_corpus = tokenized_corpus
+        self.bm25 = BM25Okapi(tokenized_corpus)
+
+        if self.index_file:
+            self.save(self.index_file)
+
+        print(f"BM25 index incrementally updated: added {len(unique_new)} chunks (total: {len(self.corpus_meta)}).")
+        return len(unique_new)
+
+    def remove_and_update_chunks(
+        self,
+        remove_chunk_ids: Set[str],
+        new_chunks: List[Dict[str, Any]],
+        max_snippet_len: int = 400
+    ) -> Tuple[int, int]:
+        """Atomically remove outdated chunks and add new chunks in BM25 index."""
+        initial_count = len(self.corpus_meta)
+
+        # 1. Keep chunks not in remove_chunk_ids
+        kept_meta = [m for m in self.corpus_meta if m["chunk_id"] not in remove_chunk_ids]
+        removed_count = initial_count - len(kept_meta)
+
+        # 2. Add new chunks (excluding any already present in kept)
+        kept_cids = {m["chunk_id"] for m in kept_meta}
+        unique_new = [c for c in new_chunks if c["chunk_id"] not in kept_cids]
+
+        full_meta = list(kept_meta)
+        tokenized_corpus = []
+
+        # Tokenize kept chunks
+        for m in kept_meta:
+            symbols = " ".join(m.get("symbols_defined", []) + m.get("symbols_used", []))
+            doc_text = f"{m.get('file_path', '')} {m.get('chunk_name', '')} {symbols}\n{m.get('code_text', '')}"
+            tokenized_corpus.append(tokenize_code(doc_text))
+
+        # Tokenize and format new chunks
+        for c in unique_new:
+            cid = c["chunk_id"]
+            code_text = c.get("code_text", "")
+            fpath = c.get("file_path", "")
+            name = c.get("chunk_name", "")
+            symbols = " ".join(c.get("symbols_defined", []) + c.get("symbols_used", []))
+            doc_text = f"{fpath} {name} {symbols}\n{code_text}"
+            tokenized_corpus.append(tokenize_code(doc_text))
+
+            meta = {
+                "chunk_id": cid,
+                "repo_id": c.get("repo_id", ""),
+                "file_path": fpath,
+                "start_line": c.get("start_line", 1),
+                "end_line": c.get("end_line", 1),
+                "chunk_type": c.get("chunk_type", ""),
+                "chunk_name": name,
+                "language": c.get("language", ""),
+                "symbols_defined": c.get("symbols_defined", []),
+                "symbols_used": c.get("symbols_used", []),
+                "imports": c.get("imports", []),
+                "code_snippet": code_text[:max_snippet_len],
+                "code_text": code_text,
+                "citation": f"{c.get('repo_id', '')}:{fpath}#L{c.get('start_line', 1)}-L{c.get('end_line', 1)}"
+            }
+            full_meta.append(meta)
+
+        self.corpus_meta = full_meta
+        self.corpus_tokens = [set(t) for t in tokenized_corpus]
+        self.chunk_id_to_idx = {m["chunk_id"]: idx for idx, m in enumerate(full_meta)}
+        self.tokenized_corpus = tokenized_corpus
+        self.bm25 = BM25Okapi(tokenized_corpus) if tokenized_corpus else BM25Okapi([[]])
+
+        if self.index_file:
+            self.save(self.index_file)
+
+        return removed_count, len(unique_new)
 
     def search(
         self,

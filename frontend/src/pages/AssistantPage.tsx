@@ -18,7 +18,12 @@ import {
   Filter,
   CheckCircle2,
   RefreshCw,
-  X
+  X,
+  ThumbsUp,
+  ThumbsDown,
+  AlertTriangle,
+  FileQuestion,
+  Check
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -40,8 +45,28 @@ export const AssistantPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null);
+  const [feedbackStatus, setFeedbackStatus] = useState<{ [msgId: string]: string }>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleFeedback = async (
+    msgId: string,
+    question: string,
+    type: 'helpful' | 'not_helpful' | 'incorrect_citation' | 'missing_context',
+    citation?: string
+  ) => {
+    try {
+      await api.submitFeedback({
+        query_or_question: question,
+        feedback_type: type,
+        citation: citation,
+        repo_id: selectedRepo || undefined
+      });
+      setFeedbackStatus(prev => ({ ...prev, [msgId]: type }));
+    } catch (e) {
+      console.error("Failed to submit feedback", e);
+    }
+  };
 
   useEffect(() => {
     api.listRepositories()
@@ -256,6 +281,49 @@ export const AssistantPage: React.FC = () => {
                               </button>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* User Feedback controls */}
+                      {msg.data && msg.data.is_answered && (
+                        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between flex-wrap gap-2 text-xs text-slate-400">
+                          <span className="text-[11px] font-mono text-slate-500">Was this answer helpful?</span>
+                          {feedbackStatus[msg.id] ? (
+                            <span className="flex items-center gap-1 text-[11px] font-mono text-emerald-400">
+                              <Check className="w-3.5 h-3.5" /> Feedback recorded ({feedbackStatus[msg.id].replace('_', ' ')})
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <button
+                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'helpful', msg.data!.citations?.[0])}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-emerald-400 transition-colors"
+                                title="Helpful"
+                              >
+                                <ThumbsUp className="w-3 h-3" /> Helpful
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'not_helpful', msg.data!.citations?.[0])}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-rose-400 transition-colors"
+                                title="Not helpful"
+                              >
+                                <ThumbsDown className="w-3 h-3" /> Not helpful
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'incorrect_citation', msg.data!.citations?.[0])}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-amber-400 transition-colors"
+                                title="Incorrect citation"
+                              >
+                                <AlertTriangle className="w-3 h-3" /> Incorrect citation
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'missing_context', msg.data!.citations?.[0])}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-indigo-400 transition-colors"
+                                title="Missing context"
+                              >
+                                <FileQuestion className="w-3 h-3" /> Missing context
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

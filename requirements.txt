@@ -16,4 +16,3 @@ rank-bm25
 pytest
 httpx
 tokenizers
-

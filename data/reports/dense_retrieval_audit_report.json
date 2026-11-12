@@ -1,0 +1,35 @@
+{
+  "query_count": 50,
+  "methods": {
+    "bm25_baseline": {
+      "recall@1": 1.0,
+      "recall@5": 1.0,
+      "recall@10": 1.0,
+      "mrr": 1.0
+    },
+    "custom_dense_existing": {
+      "recall@1": 0.22,
+      "recall@5": 0.46,
+      "recall@10": 0.64,
+      "mrr": 0.3257
+    },
+    "custom_dense_improved": {
+      "recall@1": 0.18,
+      "recall@5": 0.38,
+      "recall@10": 0.6,
+      "mrr": 0.2822
+    },
+    "hybrid_rrf_standard": {
+      "recall@1": 0.64,
+      "recall@5": 0.92,
+      "recall@10": 0.96,
+      "mrr": 0.7516
+    },
+    "hybrid_rrf_symbol_boosted": {
+      "recall@1": 1.0,
+      "recall@5": 1.0,
+      "recall@10": 1.0,
+      "mrr": 1.0
+    }
+  }
+}

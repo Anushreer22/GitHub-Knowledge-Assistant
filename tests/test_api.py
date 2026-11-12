@@ -72,3 +72,17 @@ def test_repository_files_not_found():
 def test_chunk_detail_not_found():
     response = client.get("/api/repositories/public-apis__public-apis/chunks/non_existent_chunk_id")
     assert response.status_code == 404
+
+
+def test_feedback_endpoint():
+    payload = {
+        "query_or_question": "Where is check_auth defined?",
+        "feedback_type": "helpful",
+        "citation": "repo:file.py#L1-L10",
+        "notes": "Exact line matches"
+    }
+    response = client.post("/api/feedback", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "received"
+    assert "feedback_id" in data
