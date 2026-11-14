@@ -4,8 +4,9 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased;
     overflow-x: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
@@ -16,19 +17,32 @@
 }
 
 ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.dark ::-webkit-scrollbar-track {
   background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
   background: #334155;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
 
-/* Prism override for seamless dark theme */
+/* Prism override for seamless code theme */
 pre[class*="language-"] {
   background: #090d16 !important;
   margin: 0 !important;

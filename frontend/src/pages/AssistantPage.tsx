@@ -4,7 +4,6 @@ import { api } from '../services/api';
 import { QueryResponse, RepositoryInfo, EvidenceItem } from '../types/api';
 import { ConfidenceBadge } from '../components/ConfidenceBadge';
 import { ClassificationBadge } from '../components/ClassificationBadge';
-import { CitationCard } from '../components/CitationCard';
 import { CodeViewer } from '../components/CodeViewer';
 import {
   MessageSquare,
@@ -12,7 +11,6 @@ import {
   Sparkles,
   Layers,
   ShieldCheck,
-  HelpCircle,
   FileCode,
   ArrowRight,
   Filter,
@@ -23,7 +21,14 @@ import {
   ThumbsDown,
   AlertTriangle,
   FileQuestion,
-  Check
+  Check,
+  Copy,
+  Trash2,
+  HelpCircle,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Cpu
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -33,6 +38,15 @@ interface ChatMessage {
   data?: QueryResponse;
   timestamp: string;
 }
+
+const SUGGESTED_QUESTIONS = [
+  'Where is authentication implemented?',
+  'Explain the main application entry point.',
+  'Which functions call validate_user()?',
+  'Where is database connectivity configured?',
+  'Which tests verify payment validation?',
+  'How does the application process user requests?'
+];
 
 export const AssistantPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -46,32 +60,14 @@ export const AssistantPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null);
   const [feedbackStatus, setFeedbackStatus] = useState<{ [msgId: string]: string }>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const handleFeedback = async (
-    msgId: string,
-    question: string,
-    type: 'helpful' | 'not_helpful' | 'incorrect_citation' | 'missing_context',
-    citation?: string
-  ) => {
-    try {
-      await api.submitFeedback({
-        query_or_question: question,
-        feedback_type: type,
-        citation: citation,
-        repo_id: selectedRepo || undefined
-      });
-      setFeedbackStatus(prev => ({ ...prev, [msgId]: type }));
-    } catch (e) {
-      console.error("Failed to submit feedback", e);
-    }
-  };
 
   useEffect(() => {
     api.listRepositories()
       .then(setRepos)
-      .catch((err) => console.error("Failed to load repositories:", err));
+      .catch((err) => console.error('Failed to load repositories:', err));
   }, []);
 
   useEffect(() => {
@@ -95,7 +91,7 @@ export const AssistantPage: React.FC = () => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInputQuestion('');
     setLoading(true);
 
@@ -115,7 +111,7 @@ export const AssistantPage: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
-      setMessages(prev => [...prev, assistantMsg]);
+      setMessages((prev) => [...prev, assistantMsg]);
       if (response.evidence && response.evidence.length > 0) {
         setSelectedEvidence(response.evidence[0]);
       }
@@ -123,226 +119,332 @@ export const AssistantPage: React.FC = () => {
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         sender: 'assistant',
-        text: `Error retrieving answer: ${err?.response?.data?.detail || err.message || 'Service unavailable'}`,
+        text: `Error connecting to assistant: ${err.response?.data?.detail || err.message || 'Service unavailable'}. Please verify the backend is running.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setMessages(prev => [...prev, errorMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
   };
 
-  const starterPrompts = [
-    { label: "check_auth function", query: "Where is the check_auth function implemented?" },
-    { label: "error_message function", query: "Where is the error_message function implemented?" },
-    { label: "Singleton Pattern", query: "Where is the Singleton design pattern implemented?" },
-    { label: "HTTP Parsing in Werkzeug", query: "Where are HTTP request headers or parsing handled?" },
-    { label: "Unanswerable Query Demo", query: "Where is the non_existent_mystery_function defined?" }
-  ];
+  const handleFeedback = async (
+    msgId: string,
+    question: string,
+    type: 'helpful' | 'not_helpful' | 'incorrect_citation' | 'missing_context',
+    citation?: string
+  ) => {
+    try {
+      await api.submitFeedback({
+        query_or_question: question,
+        feedback_type: type,
+        citation: citation,
+        repo_id: selectedRepo || undefined
+      });
+      setFeedbackStatus((prev) => ({ ...prev, [msgId]: type }));
+    } catch (e) {
+      console.error('Failed to submit feedback', e);
+    }
+  };
+
+  const handleCopyAnswer = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (e) {
+      console.error('Copy failed', e);
+    }
+  };
+
+  const handleClearChat = () => {
+    setMessages([]);
+    setSelectedEvidence(null);
+  };
+
+  const activeRepoObj = repos.find((r) => r.repo_id === selectedRepo);
 
   return (
-    <div className="py-4 space-y-4">
-      {/* Top Controls Bar */}
-      <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/70 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold text-white">AI Assistant Workspace</span>
-          <span className="text-slate-500 font-mono hidden sm:inline">• Strict Code Grounding</span>
+    <div className="h-[calc(100vh-6.5rem)] flex flex-col space-y-4 animate-in fade-in duration-200">
+      {/* 1. Header Toolbar */}
+      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+            <MessageSquare className="w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <span>AI Code Assistant</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hidden sm:inline-flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5" />
+                <span>Evidence Grounded</span>
+              </span>
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 hidden md:block">
+              Ask natural-language questions and receive answers supported by exact source code citations.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Right controls: Repo Selector, Mode Toggle, Clear Chat */}
+        <div className="flex items-center gap-2 flex-wrap ml-auto">
           {/* Repository Selector */}
-          <div className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <div className="relative">
             <select
               value={selectedRepo}
               onChange={(e) => setSelectedRepo(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-xs"
+              className="text-xs font-medium pl-3 pr-8 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
             >
-              <option value="">All 10 Repositories</option>
-              {repos.map(r => (
+              <option value="">All Repositories ({repos.length})</option>
+              {repos.map((r) => (
                 <option key={r.repo_id} value={r.repo_id}>
-                  {r.full_name || r.repo_id}
+                  {r.full_name || r.repo_id} ({r.chunk_count} chunks)
                 </option>
               ))}
             </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
           </div>
 
-          {/* Mode Selector */}
-          <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 font-mono">
-            {(['hybrid', 'bm25', 'dense'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium uppercase transition-colors ${
-                  mode === m
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {m}
-              </button>
-            ))}
+          {/* Retrieval Mode Selector */}
+          <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs">
+            <button
+              onClick={() => setMode('hybrid')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                mode === 'hybrid'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+              title="Hybrid: Lexical BM25 + Semantic CodeEncoder with RRF & Symbol Boost"
+            >
+              Hybrid
+            </button>
+            <button
+              onClick={() => setMode('bm25')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                mode === 'bm25'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+              title="BM25: Sub-token identifier lexical matching"
+            >
+              BM25
+            </button>
+            <button
+              onClick={() => setMode('dense')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                mode === 'dense'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+              title="Dense: Custom Transformer CodeEncoder embeddings"
+            >
+              Dense
+            </button>
           </div>
+
+          {/* Clear Chat Button */}
+          {messages.length > 0 && (
+            <button
+              onClick={handleClearChat}
+              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Clear conversation"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px]">
-        {/* Chat Stream (Left / Main) */}
-        <div className="lg:col-span-7 flex flex-col h-[700px] rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-          {/* Messages list */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      {/* 2. Split Workspace: Left Chat (60%), Right Evidence Inspector (40%) */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-hidden min-h-0">
+        {/* Left Column: Chat History & Input */}
+        <div className="lg:col-span-7 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+          {/* Chat Messages Stream */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 text-slate-400">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shadow-lg shadow-indigo-500/10">
-                  <Sparkles className="w-6 h-6" />
+              /* Empty State */
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6">
+                <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm">
+                  <Sparkles className="w-8 h-8" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white mb-1">
-                    Ask About Repository Source Code
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Inquire about function implementations, class definitions, design patterns, or parameters. Every response is verified with exact citations.
+
+                <div className="space-y-1.5 max-w-md">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Ask anything about your codebase.
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Explore logic, trace function callers, or inspect execution flows. Answers are mathematically grounded in verified AST chunks.
                   </p>
                 </div>
 
-                {/* Starter Prompts */}
-                <div className="w-full text-left pt-2 space-y-2">
-                  <span className="text-[11px] uppercase font-mono tracking-wider text-slate-500 font-semibold">
-                    Suggested Verification Prompts:
-                  </span>
-                  <div className="flex flex-col gap-1.5">
-                    {starterPrompts.map((p, idx) => (
+                {/* Suggested Questions Grid */}
+                <div className="w-full max-w-lg space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider font-semibold font-mono text-slate-400">
+                    Suggested Questions
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+                    {SUGGESTED_QUESTIONS.map((questionText, idx) => (
                       <button
                         key={idx}
-                        onClick={() => handleSend(p.query)}
-                        className="text-left px-3 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-850 border border-slate-800 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-between group"
+                        onClick={() => handleSend(questionText)}
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 hover:border-indigo-400 dark:hover:border-indigo-600/70 text-slate-700 dark:text-slate-300 text-xs text-left transition-all group flex items-start gap-2 shadow-2xs"
                       >
-                        <span className="truncate">{p.query}</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-transform" />
+                        <span className="leading-snug">{questionText}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
             ) : (
+              /* Messages List */
               messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} space-y-1`}
                 >
-                  <div className="text-[11px] text-slate-500 px-1 font-mono">
-                    {msg.sender === 'user' ? 'You' : 'Assistant'} • {msg.timestamp}
+                  <div className="text-[10px] text-slate-400 px-1 font-mono">
+                    {msg.sender === 'user' ? 'You' : 'Knowledge Assistant'} • {msg.timestamp}
                   </div>
 
                   {msg.sender === 'user' ? (
-                    <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-4 py-3 text-sm font-medium shadow-md">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-4 py-2.5 text-sm font-medium shadow-sm">
                       {msg.text}
                     </div>
                   ) : (
-                    <div className="max-w-[95%] rounded-2xl rounded-tl-sm bg-slate-950/90 border border-slate-800 p-4 text-sm text-slate-200 space-y-3 shadow-lg">
+                    /* Assistant Response Card */
+                    <div className="w-full max-w-full rounded-2xl rounded-tl-sm bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 text-sm text-slate-800 dark:text-slate-200 space-y-4 shadow-xs">
                       {/* Meta badges */}
                       {msg.data && (
-                        <div className="flex items-center gap-2 flex-wrap pb-2 border-b border-slate-800/80 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-slate-200 dark:border-slate-800/80 text-xs">
                           <ConfidenceBadge confidence={msg.data.confidence_indicator} />
                           <ClassificationBadge classification={msg.data.match_classification} />
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-400">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                             {msg.data.retrieval_method}
                           </span>
                         </div>
                       )}
 
-                      {/* Answer prose */}
-                      <div className="leading-relaxed text-sm text-slate-200">
+                      {/* Direct Answer Prose */}
+                      <div className="leading-relaxed text-sm text-slate-800 dark:text-slate-200 space-y-2 whitespace-pre-line">
                         {msg.text}
                       </div>
 
-                      {/* Evidence citation links */}
+                      {/* Evidence Citations Bar */}
                       {msg.data && msg.data.evidence && msg.data.evidence.length > 0 && (
-                        <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                          <div className="text-[11px] uppercase tracking-wider font-mono text-slate-400 font-semibold">
-                            Source Citations ({msg.data.evidence.length}):
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
+                          <div className="text-[11px] uppercase tracking-wider font-mono text-slate-500 dark:text-slate-400 font-semibold flex items-center justify-between">
+                            <span>Retrieved Source Evidence ({msg.data.evidence.length})</span>
+                            <span className="text-[10px] text-slate-400 font-normal">Click citation to inspect</span>
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {msg.data.evidence.map((ev, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setSelectedEvidence(ev)}
-                                className={`text-left text-xs font-mono px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-                                  selectedEvidence?.citation === ev.citation
-                                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
-                                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
-                                }`}
-                              >
-                                <FileCode className="w-3.5 h-3.5 text-indigo-400" />
-                                <span>{ev.file_path.split('/').pop()}</span>
-                                <span className="text-slate-500 text-[10px]">L{ev.start_line}-L{ev.end_line}</span>
-                              </button>
-                            ))}
+
+                          <div className="flex flex-wrap gap-2">
+                            {msg.data.evidence.map((ev, i) => {
+                              const isSelected = selectedEvidence?.citation === ev.citation;
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => setSelectedEvidence(ev)}
+                                  className={`text-left text-xs font-mono px-3 py-1.5 rounded-xl border transition-all flex items-center gap-2 ${
+                                    isSelected
+                                      ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-400 dark:border-indigo-500 text-indigo-700 dark:text-indigo-300 font-semibold shadow-xs'
+                                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-400'
+                                  }`}
+                                >
+                                  <FileCode className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                  <span className="truncate max-w-[150px]">{ev.file_path.split('/').pop()}</span>
+                                  <span className="text-slate-400 text-[10px]">
+                                    L{ev.start_line}-L{ev.end_line}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
-                      {/* User Feedback controls */}
-                      {msg.data && msg.data.is_answered && (
-                        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between flex-wrap gap-2 text-xs text-slate-400">
-                          <span className="text-[11px] font-mono text-slate-500">Was this answer helpful?</span>
-                          {feedbackStatus[msg.id] ? (
-                            <span className="flex items-center gap-1 text-[11px] font-mono text-emerald-400">
-                              <Check className="w-3.5 h-3.5" /> Feedback recorded ({feedbackStatus[msg.id].replace('_', ' ')})
-                            </span>
+                      {/* Response Footer: Copy & Feedback */}
+                      <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+                        {/* Copy Answer */}
+                        <button
+                          onClick={() => handleCopyAnswer(msg.text, msg.id)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors text-xs font-medium"
+                        >
+                          {copiedId === msg.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              <span className="text-emerald-500">Copied</span>
+                            </>
                           ) : (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <button
-                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'helpful', msg.data!.citations?.[0])}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-emerald-400 transition-colors"
-                                title="Helpful"
-                              >
-                                <ThumbsUp className="w-3 h-3" /> Helpful
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'not_helpful', msg.data!.citations?.[0])}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-rose-400 transition-colors"
-                                title="Not helpful"
-                              >
-                                <ThumbsDown className="w-3 h-3" /> Not helpful
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'incorrect_citation', msg.data!.citations?.[0])}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-amber-400 transition-colors"
-                                title="Incorrect citation"
-                              >
-                                <AlertTriangle className="w-3 h-3" /> Incorrect citation
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.id, msg.data!.question, 'missing_context', msg.data!.citations?.[0])}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-indigo-400 transition-colors"
-                                title="Missing context"
-                              >
-                                <FileQuestion className="w-3 h-3" /> Missing context
-                              </button>
-                            </div>
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy Answer</span>
+                            </>
                           )}
-                        </div>
-                      )}
+                        </button>
+
+                        {/* User Feedback buttons */}
+                        {msg.data && msg.data.is_answered && (
+                          <div className="flex items-center gap-1">
+                            {feedbackStatus[msg.id] ? (
+                              <span className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
+                                <Check className="w-3.5 h-3.5" /> Feedback recorded
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleFeedback(msg.id, msg.data!.question, 'helpful', msg.data!.citations?.[0])}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                                  title="Helpful"
+                                >
+                                  <ThumbsUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleFeedback(msg.id, msg.data!.question, 'not_helpful', msg.data!.citations?.[0])}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                                  title="Not helpful"
+                                >
+                                  <ThumbsDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleFeedback(msg.id, msg.data!.question, 'incorrect_citation', msg.data!.citations?.[0])}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                                  title="Incorrect citation"
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleFeedback(msg.id, msg.data!.question, 'missing_context', msg.data!.citations?.[0])}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                                  title="Missing context"
+                                >
+                                  <FileQuestion className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               ))
             )}
 
+            {/* Loading Indicator */}
             {loading && (
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-400">
-                <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin" />
-                <span>Searching AST chunks, applying BM25 & dense RRF, and verifying code evidence...</span>
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-300">
+                <RefreshCw className="w-4 h-4 text-indigo-500 animate-spin shrink-0" />
+                <span>
+                  Segmenting AST tokens, executing hybrid retrieval (BM25 + CodeEncoder), and verifying code evidence...
+                </span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Chat input box */}
-          <div className="p-3 sm:p-4 bg-slate-950/90 border-t border-slate-800">
+          {/* Chat Input Bar */}
+          <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -352,16 +454,20 @@ export const AssistantPage: React.FC = () => {
             >
               <input
                 type="text"
-                placeholder="Ask a question about the indexed repositories..."
+                placeholder={
+                  selectedRepo
+                    ? `Ask a question about ${selectedRepo}...`
+                    : 'Ask anything about your codebase (e.g., Where is check_auth defined?)...'
+                }
                 value={inputQuestion}
                 onChange={(e) => setInputQuestion(e.target.value)}
                 disabled={loading}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
               />
               <button
                 type="submit"
                 disabled={loading || !inputQuestion.trim()}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/20"
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm transition-all shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
               >
                 <Send className="w-4 h-4" />
                 <span className="hidden sm:inline">Ask</span>
@@ -370,13 +476,14 @@ export const AssistantPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Evidence Inspector Side Panel (Right) */}
-        <div className="lg:col-span-5 flex flex-col h-[700px] rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden">
-          <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+        {/* Right Column: Code Evidence Inspector (Sticky on Desktop) */}
+        <div className="hidden lg:flex lg:col-span-5 flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+          {/* Inspector Header */}
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-semibold text-white text-sm">
-                Evidence Inspector
+              <FileCode className="w-4 h-4 text-indigo-500" />
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                Source Evidence Inspector
               </h3>
             </div>
             {selectedEvidence && (
@@ -384,31 +491,56 @@ export const AssistantPage: React.FC = () => {
             )}
           </div>
 
+          {/* Inspector Body */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {selectedEvidence ? (
               <div className="space-y-4">
-                <CitationCard evidence={selectedEvidence} compact={false} />
-
-                {selectedEvidence.code_snippet && (
-                  <div>
-                    <div className="text-xs font-mono text-slate-400 mb-1.5 font-semibold">
-                      Source Code Implementation:
-                    </div>
-                    <CodeViewer
-                      code={selectedEvidence.code_snippet}
-                      language={selectedEvidence.language || 'python'}
-                      filePath={selectedEvidence.file_path}
-                      startLine={selectedEvidence.start_line}
-                      endLine={selectedEvidence.end_line}
-                      title={selectedEvidence.chunk_name}
-                    />
+                {/* File details card */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-400">FILE</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-semibold truncate max-w-[200px]" title={selectedEvidence.file_path}>
+                      {selectedEvidence.file_path}
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-400">RANGE</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                      Lines {selectedEvidence.start_line}–{selectedEvidence.end_line}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-400">SYMBOL</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold truncate">
+                      {selectedEvidence.chunk_name} ({selectedEvidence.chunk_type})
+                    </span>
+                  </div>
+                </div>
+
+                {/* Code Viewer with Syntax Highlighting */}
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider font-semibold font-mono text-slate-400 mb-1.5">
+                    Source Code Snippet
+                  </div>
+                  <CodeViewer
+                    code={selectedEvidence.code_snippet || ''}
+                    language={selectedEvidence.language || 'python'}
+                    filePath={selectedEvidence.file_path}
+                    startLine={selectedEvidence.start_line}
+                    endLine={selectedEvidence.end_line}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 text-xs">
-                <FileCode className="w-10 h-10 text-slate-700 mb-2" />
-                <span>Ask a question or select a citation chip to inspect code chunks and verification details.</span>
+              /* No selection state */
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
+                <FileCode className="w-10 h-10 text-slate-300 dark:text-slate-700" />
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  No Code Selected
+                </h4>
+                <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                  Ask a question on the left, then click any citation pill to inspect its syntax-highlighted source code here.
+                </p>
               </div>
             )}
           </div>
