@@ -3,6 +3,7 @@ import re
 import json
 import time
 import shutil
+import tempfile
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
@@ -173,8 +174,9 @@ def clone_public_repo(clone_url: str, dest_dir: Path, default_branch: Optional[s
             # If invalid git dir, remove corrupt directory
             shutil.rmtree(dest_dir, ignore_errors=True)
 
-    # Use a safe temporary directory during clone and verification
-    temp_dir = dest_dir.parent / f".tmp_{dest_dir.name}_{int(time.time())}"
+    # Use a safe temporary directory outside the project tree during clone and verification
+    # to avoid triggering file watchers or polluting the workspace during active clones.
+    temp_dir = Path(tempfile.gettempdir()) / f"gha_clone_{dest_dir.name}_{int(time.time())}"
     if temp_dir.exists():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
