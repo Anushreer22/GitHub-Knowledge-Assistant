@@ -43,14 +43,23 @@ export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
 
   // Validate URL as user types
   useEffect(() => {
-    const trimmed = url.trim();
+    let trimmed = url.trim();
     if (!trimmed) {
       setIsValidUrl(null);
       setValidationMsg('');
       return;
     }
 
-    const githubRegex = /^(?:https:\/\/github\.com\/)?([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git|\/)?$/;
+    // Strip query parameters, anchors, and sub-paths like /tree/main or /blob/main
+    trimmed = trimmed.split('?')[0].split('#')[0].replace(/\/$/, '');
+    if (trimmed.includes('/tree/')) {
+      trimmed = trimmed.substring(0, trimmed.indexOf('/tree/'));
+    }
+    if (trimmed.includes('/blob/')) {
+      trimmed = trimmed.substring(0, trimmed.indexOf('/blob/'));
+    }
+
+    const githubRegex = /^(?:https?:\/\/(?:www\.)?github\.com\/|github\.com\/)?([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git|\/)?$/i;
     const match = trimmed.match(githubRegex);
 
     if (match) {
@@ -194,7 +203,7 @@ export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
                   Quick Examples:
                 </span>
                 <div className="flex flex-wrap gap-2 mt-1.5">
-                  {['psf/requests', 'pallets/flask', 'tiangolo/fastapi'].map((example) => (
+                  {['encode/starlette', 'pallets/click', 'junit-team/junit4'].map((example) => (
                     <button
                       key={example}
                       type="button"

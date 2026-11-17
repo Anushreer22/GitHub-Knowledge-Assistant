@@ -29,6 +29,13 @@ def validate_and_parse_github_url(url: str) -> Tuple[str, str]:
 
     url_clean = url.strip()
 
+    # Normalize URLs copied from browser with query params (?tab=...), anchors (#...), or tree/blob paths
+    url_clean = url_clean.split("?")[0].split("#")[0].rstrip("/")
+    if "/tree/" in url_clean:
+        url_clean = url_clean[:url_clean.index("/tree/")]
+    if "/blob/" in url_clean:
+        url_clean = url_clean[:url_clean.index("/blob/")]
+
     # Reject dangerous shell injection characters, spaces, or traversal sequences
     if any(c in url_clean for c in [";", "&", "|", "`", "$", "<", ">", "\n", "\r", " "]):
         raise ValueError("Invalid URL: Contains prohibited command injection or control characters.")
