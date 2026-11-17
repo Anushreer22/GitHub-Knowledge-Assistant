@@ -53,7 +53,8 @@ class AnswerEngine:
         question: str,
         repo_id: Optional[str] = None,
         top_k: int = 5,
-        mode: str = "hybrid"
+        mode: str = "hybrid",
+        include_debug: bool = False
     ) -> Dict[str, Any]:
         """Retrieve code evidence, expand context, and generate a factual evidence-grounded answer."""
         is_multi = is_multi_file_query(question)
@@ -70,12 +71,16 @@ class AnswerEngine:
 
         # 1. Check for insufficient evidence or empty retrieval
         insufficient = False
+        insufficient_reason = None
         if not retrieved_chunks:
             insufficient = True
+            insufficient_reason = "No candidate chunks retrieved matching query filters."
         elif retrieved_chunks[0].get("match_classification") == "insufficient_evidence":
             insufficient = True
+            insufficient_reason = "Top candidate classified as insufficient_evidence."
         elif retrieved_chunks[0].get("score", 0.0) < self.min_evidence_threshold:
             insufficient = True
+            insufficient_reason = f"Top score ({retrieved_chunks[0].get('score', 0.0)}) fell below threshold ({self.min_evidence_threshold})."
         else:
             combined_top_text = " ".join(
                 (c.get("file_path", "") + " " + c.get("chunk_name", "") + " " + c.get("code_text", "")).lower()
@@ -94,8 +99,10 @@ class AnswerEngine:
 
             if content_keywords and not any(match_token(kw) for kw in content_keywords):
                 insufficient = True
+                insufficient_reason = f"None of the key query tokens {content_keywords} found in top retrieved code chunks."
+
         if insufficient:
-            return {
+            res: Dict[str, Any] = {
                 "question": question,
                 "answer": (
                     f"Insufficient evidence: The repository does not contain verifiable code matching '{question}'. "
@@ -107,6 +114,24 @@ class AnswerEngine:
                 "evidence": [],
                 "citations": []
             }
+            if include_debug:
+                res["debug_info"] = {
+                    "insufficient": True,
+                    "insufficient_reason": insufficient_reason,
+                    "content_keywords": content_keywords,
+                    "retrieved_candidates_count": len(retrieved_chunks),
+                    "top_candidates": [
+                        {
+                            "chunk_id": c.get("chunk_id"),
+                            "name": c.get("chunk_name"),
+                            "file": c.get("file_path"),
+                            "score": c.get("score"),
+                            "classification": c.get("match_classification")
+                        }
+                        for c in retrieved_chunks[:5]
+                    ]
+                }
+            return res
 
         # 2. Multi-file retrieval strategy: ensure diverse cross-file coverage
         if is_multi and len(retrieved_chunks) > 1:
@@ -286,7 +311,7 @@ class AnswerEngine:
             if cit and cit not in citations:
                 citations.append(cit)
 
-        return {
+        res = {
             "question": question,
             "answer": answer_text,
             "is_answered": True,
@@ -295,3 +320,13 @@ class AnswerEngine:
             "evidence": evidence_items,
             "citations": citations
         }
+        if include_debug:
+            res["debug_info"] = {
+                "insufficient": False,
+                "content_keywords": content_keywords,
+                "retrieved_candidates_count": len(retrieved_chunks),
+                "primary_score": primary.get("score"),
+                "primary_classification": p_classif,
+                "evidence_count": len(evidence_items)
+            }
+        return res

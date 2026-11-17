@@ -228,10 +228,74 @@ class RetrievalService:
             raise RuntimeError("Retrieval engine is not initialized. Please trigger indexing first.")
         return self.hybrid.search(query=query, top_k=top_k, mode=mode, repo_id=repo_id)
 
-    def query_qa(self, question: str, top_k: int = 5, mode: str = "hybrid", repo_id: Optional[str] = None) -> Dict[str, Any]:
+    def query_qa(
+        self,
+        question: str,
+        top_k: int = 5,
+        mode: str = "hybrid",
+        repo_id: Optional[str] = None,
+        include_debug: bool = False
+    ) -> Dict[str, Any]:
         if not self.answer_engine:
             raise RuntimeError("Answer engine is not initialized. Please trigger indexing first.")
-        return self.answer_engine.answer_question(question=question, repo_id=repo_id, top_k=top_k, mode=mode)
+        return self.answer_engine.answer_question(
+            question=question,
+            repo_id=repo_id,
+            top_k=top_k,
+            mode=mode,
+            include_debug=include_debug
+        )
+
+    def get_retrieval_debug(
+        self,
+        query: str,
+        repo_id: Optional[str] = None,
+        mode: str = "hybrid",
+        top_k: int = 10
+    ) -> Dict[str, Any]:
+        """Exhaustive retrieval observability and candidate inspection across pipeline stages."""
+        if not self.bm25:
+            raise RuntimeError("BM25 index not initialized.")
+
+        # 1. Corpus stats
+        repo_chunks = [m for m in self.bm25.corpus_meta if not repo_id or m.get("repo_id") == repo_id]
+        unique_files = {m.get("file_path") for m in repo_chunks}
+
+        # 2. Stage candidates
+        bm25_res = self.bm25.search(query=query, top_k=top_k, repo_id=repo_id) if self.bm25 else []
+        dense_res = self.dense.search(query=query, top_k=top_k, repo_id=repo_id) if self.dense else []
+        hybrid_res = self.hybrid.search(query=query, top_k=top_k, mode=mode, repo_id=repo_id) if self.hybrid else []
+
+        exact_matches = [r for r in hybrid_res if r.get("match_classification") == "exact_match"]
+
+        return {
+            "query": query,
+            "repo_id": repo_id or "all_repositories",
+            "indexed_files_count": len(unique_files),
+            "indexed_chunks_count": len(repo_chunks),
+            "bm25_candidate_count": len(bm25_res),
+            "dense_candidate_count": len(dense_res),
+            "rrf_candidate_count": len(hybrid_res),
+            "exact_symbol_matches_count": len(exact_matches),
+            "bm25_top_candidates": [
+                {"chunk_id": r["chunk_id"], "name": r["chunk_name"], "file": r["file_path"], "score": r["score"]}
+                for r in bm25_res[:5]
+            ],
+            "dense_top_candidates": [
+                {"chunk_id": r["chunk_id"], "name": r["chunk_name"], "file": r["file_path"], "score": r["score"]}
+                for r in dense_res[:5]
+            ],
+            "fused_top_candidates": [
+                {
+                    "chunk_id": r["chunk_id"],
+                    "name": r["chunk_name"],
+                    "file": r["file_path"],
+                    "score": r["score"],
+                    "classification": r.get("match_classification")
+                }
+                for r in hybrid_res[:5]
+            ]
+        }
 
     def get_symbol_relationships(self, symbol_name: str, repo_id: Optional[str] = None) -> Dict[str, Any]:
         """Fetch static relationships (definitions, callers, callees, inheritance, tests) for a symbol."""

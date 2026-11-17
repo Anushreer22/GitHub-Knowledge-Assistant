@@ -119,6 +119,7 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=50)
     mode: str = Field(default="hybrid", pattern="^(hybrid|bm25|dense)$")
     repo_id: Optional[str] = None
+    debug: bool = Field(default=False, description="Include detailed retrieval observability details")
 
 
 class EvidenceItemSchema(BaseModel):
@@ -140,6 +141,7 @@ class SearchResponse(BaseModel):
     retrieval_method: str
     total_results: int
     results: List[EvidenceItemSchema]
+    debug_info: Optional[Dict[str, Any]] = None
 
 
 class QueryRequest(BaseModel):
@@ -147,6 +149,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
     mode: str = Field(default="hybrid", pattern="^(hybrid|bm25|dense)$")
     repo_id: Optional[str] = None
+    debug: bool = Field(default=False, description="Include detailed retrieval observability details")
 
 
 class QueryResponse(BaseModel):
@@ -158,6 +161,7 @@ class QueryResponse(BaseModel):
     evidence: List[EvidenceItemSchema]
     citations: List[str]
     match_classification: Optional[str] = None
+    debug_info: Optional[Dict[str, Any]] = None
 
 
 class FileInfo(BaseModel):

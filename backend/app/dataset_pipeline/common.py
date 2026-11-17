@@ -3,8 +3,8 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
 for d in ["raw","metadata","processed","qa","splits"]: (DATA/d).mkdir(parents=True,exist_ok=True)
-IGNORE={".git",".venv","venv","node_modules","vendor","dist","build","target","out","__pycache__"}
-EXT={".py":"python",".java":"java"}
+IGNORE={".git",".venv","venv","node_modules","vendor","dist","build","target","out","__pycache__",".idea",".vscode",".gradle",".mvn","bin"}
+EXT={".py":"python",".pyi":"python",".java":"java"}
 MAX_BYTES=1_000_000
 SECRET=[re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*[^,\s]{8,}"),

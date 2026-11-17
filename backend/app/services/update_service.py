@@ -65,14 +65,14 @@ def sync_repository(repo_id: str, max_chunks_per_file: int = 50) -> Dict[str, An
     # 1. Fetch latest remote state safely
     try:
         subprocess.run(
-            ["git", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", default_branch],
+            ["git", "-c", "core.longpaths=true", "-C", str(repo_dir), "fetch", "--depth", "1", "origin", default_branch],
             check=True,
             capture_output=True,
             text=True,
             timeout=60
         )
         current_commit = subprocess.check_output(
-            ["git", "-C", str(repo_dir), "rev-parse", "FETCH_HEAD"],
+            ["git", "-c", "core.longpaths=true", "-C", str(repo_dir), "rev-parse", "FETCH_HEAD"],
             text=True,
             timeout=10
         ).strip()
@@ -80,7 +80,7 @@ def sync_repository(repo_id: str, max_chunks_per_file: int = 50) -> Dict[str, An
         # If fetch fails (e.g. offline or no remote), check local HEAD
         try:
             current_commit = subprocess.check_output(
-                ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+                ["git", "-c", "core.longpaths=true", "-C", str(repo_dir), "rev-parse", "HEAD"],
                 text=True,
                 timeout=10
             ).strip()
@@ -127,7 +127,7 @@ def sync_repository(repo_id: str, max_chunks_per_file: int = 50) -> Dict[str, An
 
     try:
         diff_output = subprocess.check_output(
-            ["git", "-C", str(repo_dir), "diff", "--name-status", prev_commit, current_commit],
+            ["git", "-c", "core.longpaths=true", "-C", str(repo_dir), "diff", "--name-status", prev_commit, current_commit],
             text=True,
             timeout=15
         )
@@ -150,7 +150,7 @@ def sync_repository(repo_id: str, max_chunks_per_file: int = 50) -> Dict[str, An
     # 4. Advance working tree to current_commit
     try:
         subprocess.run(
-            ["git", "-C", str(repo_dir), "checkout", "--detach", current_commit],
+            ["git", "-c", "core.longpaths=true", "-C", str(repo_dir), "checkout", "--detach", current_commit],
             check=True,
             capture_output=True,
             timeout=30

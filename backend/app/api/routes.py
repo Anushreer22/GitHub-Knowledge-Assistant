@@ -1,9 +1,12 @@
 import re
 import json
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, status, Depends
+
+logger = logging.getLogger("qa-observability")
 
 from dataset_pipeline.common import DATA
 from ..schemas.retrieval_schemas import (
@@ -248,11 +251,21 @@ def search_chunks(request: SearchRequest, user: Optional[Dict[str, Any]] = Depen
                 item["match_classification"] = "related_context"
             formatted_results.append(EvidenceItemSchema(**item))
 
+        debug_data = None
+        if request.debug:
+            debug_data = service.get_retrieval_debug(
+                query=request.query,
+                repo_id=request.repo_id,
+                mode=request.mode,
+                top_k=request.top_k
+            )
+
         return SearchResponse(
             query=request.query,
             retrieval_method=request.mode,
             total_results=len(formatted_results),
-            results=formatted_results
+            results=formatted_results,
+            debug_info=debug_data
         )
     except RuntimeError as re:
         raise HTTPException(
@@ -277,7 +290,8 @@ def query_knowledge_assistant(request: QueryRequest, user: Optional[Dict[str, An
             question=request.question,
             top_k=request.top_k,
             mode=request.mode,
-            repo_id=request.repo_id
+            repo_id=request.repo_id,
+            include_debug=request.debug
         )
         formatted_evidence = []
         for ev in qa_result["evidence"]:
@@ -290,6 +304,31 @@ def query_knowledge_assistant(request: QueryRequest, user: Optional[Dict[str, An
 
         primary_classif = formatted_evidence[0].match_classification if formatted_evidence else "insufficient_evidence"
 
+        # Section 7 Observability & Logging
+        repo_chunks_count = 0
+        repo_files_count = 0
+        if service.bm25 and service.bm25.corpus_meta:
+            matched_meta = [m for m in service.bm25.corpus_meta if not request.repo_id or m.get("repo_id") == request.repo_id]
+            repo_chunks_count = len(matched_meta)
+            repo_files_count = len({m.get("file_path") for m in matched_meta})
+
+        evidence_count = len(formatted_evidence)
+        citations_list = qa_result.get("citations", [])
+        exact_matches_count = sum(1 for ev in formatted_evidence if ev.match_classification == "exact_match")
+
+        logger.info(
+            f"[QA OBSERVABILITY] repo_id='{request.repo_id or 'all'}' | "
+            f"query='{request.question}' | "
+            f"indexed_files={repo_files_count} | "
+            f"indexed_chunks={repo_chunks_count} | "
+            f"mode='{request.mode}' | "
+            f"exact_matches={exact_matches_count} | "
+            f"evidence_count={evidence_count} | "
+            f"evidence_valid={qa_result.get('is_answered')} | "
+            f"confidence='{qa_result.get('confidence_indicator')}' | "
+            f"citations={citations_list}"
+        )
+
         return QueryResponse(
             question=qa_result["question"],
             answer=qa_result["answer"],
@@ -298,7 +337,8 @@ def query_knowledge_assistant(request: QueryRequest, user: Optional[Dict[str, An
             retrieval_method=qa_result["retrieval_method"],
             evidence=formatted_evidence,
             citations=qa_result["citations"],
-            match_classification=primary_classif
+            match_classification=primary_classif,
+            debug_info=qa_result.get("debug_info")
         )
     except RuntimeError as re:
         raise HTTPException(
@@ -309,6 +349,24 @@ def query_knowledge_assistant(request: QueryRequest, user: Optional[Dict[str, An
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"QA Query failed: {str(e)}"
+        )
+
+
+@router.get("/api/debug/retrieval", tags=["QA"])
+def debug_retrieval_get(
+    query: str = Query(..., min_length=1),
+    repo_id: Optional[str] = None,
+    mode: str = "hybrid",
+    top_k: int = 10
+):
+    """Inspect raw retrieved candidates across BM25, Dense, RRF, and symbol matching before answer generation."""
+    service = RetrievalService.get_instance()
+    try:
+        return service.get_retrieval_debug(query=query, repo_id=repo_id, mode=mode, top_k=top_k)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Retrieval debugging failed: {str(e)}"
         )
 
 

@@ -156,48 +156,70 @@ def fetch_github_metadata(owner: str, repo: str) -> Dict[str, Any]:
 
 
 def clone_public_repo(clone_url: str, dest_dir: Path, default_branch: Optional[str] = None) -> str:
-    """Perform a shallow, non-executing git clone into dest_dir and return the commit SHA."""
+    """Perform a shallow, non-executing git clone into dest_dir and return the commit SHA.
+    Supports Windows long paths and uses a safe temporary directory with atomic promotion.
+    """
     dest_dir.parent.mkdir(parents=True, exist_ok=True)
 
+    # If valid git repository already exists at dest_dir, re-use its commit SHA
     if dest_dir.exists():
         try:
             return subprocess.check_output(
-                ["git", "-C", str(dest_dir), "rev-parse", "HEAD"],
+                ["git", "-c", "core.longpaths=true", "-C", str(dest_dir), "rev-parse", "HEAD"],
                 text=True,
                 timeout=10
             ).strip()
         except Exception:
-            # If invalid git dir, remove and re-clone
+            # If invalid git dir, remove corrupt directory
             shutil.rmtree(dest_dir, ignore_errors=True)
 
-    cmd = ["git", "clone", "--depth", "1"]
+    # Use a safe temporary directory during clone and verification
+    temp_dir = dest_dir.parent / f".tmp_{dest_dir.name}_{int(time.time())}"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    cmd = ["git", "-c", "core.longpaths=true", "clone", "--depth", "1"]
     if default_branch:
         cmd.extend(["--branch", default_branch])
-    cmd.extend([clone_url, str(dest_dir)])
+    cmd.extend([clone_url, str(temp_dir)])
 
     try:
-        subprocess.run(
+        proc = subprocess.run(
             cmd,
             check=True,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=180
         )
     except subprocess.CalledProcessError as cpe:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         stderr_err = cpe.stderr.strip() if cpe.stderr else str(cpe)
         raise RuntimeError(f"Git clone failed: {stderr_err}")
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Git clone timed out after 120 seconds.")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError("Git clone timed out after 180 seconds.")
 
+    # Verify checkout succeeded and repository is readable
     try:
         sha = subprocess.check_output(
-            ["git", "-C", str(dest_dir), "rev-parse", "HEAD"],
+            ["git", "-c", "core.longpaths=true", "-C", str(temp_dir), "rev-parse", "HEAD"],
             text=True,
             timeout=10
         ).strip()
-        return sha
     except Exception as e:
-        return "latest"
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(f"Incomplete clone checkout: could not verify HEAD commit SHA ({str(e)})")
+
+    # Atomic promotion from temporary directory to final destination
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir, ignore_errors=True)
+
+    try:
+        temp_dir.rename(dest_dir)
+    except Exception:
+        shutil.move(str(temp_dir), str(dest_dir))
+
+    return sha
 
 
 def extract_repository_chunks(
@@ -209,6 +231,7 @@ def extract_repository_chunks(
 ) -> List[Dict[str, Any]]:
     """Extract AST code chunks from repository source files up to max_chunks limit."""
     extracted_chunks: List[Dict[str, Any]] = []
+    detected_langs = set()
 
     for f in repo_dir.rglob("*"):
         if len(extracted_chunks) >= max_chunks:
@@ -226,6 +249,8 @@ def extract_repository_chunks(
 
         rel = f.relative_to(repo_dir).as_posix()
         lang = EXT.get(f.suffix.lower(), "unknown")
+        if lang in ("python", "java"):
+            detected_langs.add(lang.capitalize())
 
         try:
             chunks = py_chunks(text) if lang == "python" else java_chunks(text)
@@ -261,6 +286,14 @@ def extract_repository_chunks(
                 "split": "train"
             }
             extracted_chunks.append(chunk_record)
+
+    if detected_langs:
+        metadata["language"] = ", ".join(sorted(detected_langs))
+
+    if not extracted_chunks:
+        raise ValueError(
+            f"Repository '{metadata.get('full_name', repo_id)}' contains no supported Python (.py, .pyi) or Java (.java) source files."
+        )
 
     return extracted_chunks
 

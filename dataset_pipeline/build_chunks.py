@@ -1,66 +1,137 @@
 import ast
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Optional
 
 from .common import DATA, EXT, skip, secret, sid, stream_read, stream_write
 
 
 def py_chunks(text: str) -> List[tuple]:
-    """Extract Python function and class chunks using AST."""
+    """Extract Python function, method, and class chunks with scope hierarchy and exact lines using AST."""
     lines = text.splitlines()
     try:
         tree = ast.parse(text)
-    except SyntaxError:
+    except Exception:
         return [
             ("fallback_block", f"lines_{i+1}", "\n".join(lines[i:i+80])[:12000], i+1, min(i+80, len(lines)), [], [], [], "line_fallback")
             for i in range(0, len(lines), 70) if "\n".join(lines[i:i+80]).strip()
         ]
 
-    nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
-    nodes.sort(key=lambda n: n.lineno)
+    file_imports = set()
+    for n in tree.body:
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                file_imports.add(a.name)
+        elif isinstance(n, ast.ImportFrom):
+            mod = n.module or ""
+            for a in n.names:
+                file_imports.add(f"{mod}.{a.name}" if mod else a.name)
+
     out = []
-    for n in nodes:
-        start = n.lineno
-        end = getattr(n, "end_lineno", n.lineno)
-        code = "\n".join(lines[start-1:end])
-        if len(code) > 12000:
-            continue
-        imports = sorted({a.name for x in ast.walk(n) if isinstance(x, ast.Import) for a in x.names} |
-                         {x.module or "" for x in ast.walk(n) if isinstance(x, ast.ImportFrom)})
-        used = sorted({x.id for x in ast.walk(n) if isinstance(x, ast.Name)})
-        out.append((type(n).__name__, n.name, code, start, end, imports, [n.name], used, "python_ast"))
+
+    def visit(nodes, scope_stack: List[str], parent_class: Optional[str] = None):
+        for n in nodes:
+            if isinstance(n, ast.ClassDef):
+                start = min([d.lineno for d in n.decorator_list] + [n.lineno])
+                end = getattr(n, "end_lineno", n.lineno)
+                scope = ".".join(scope_stack + [n.name])
+                code = "\n".join(lines[start - 1 : end])
+                if len(code) <= 12000:
+                    imps = sorted(file_imports | {a.name for x in ast.walk(n) if isinstance(x, ast.Import) for a in x.names})
+                    defined = [n.name] + [b.id for b in n.bases if isinstance(b, ast.Name)]
+                    used = sorted({x.id for x in ast.walk(n) if isinstance(x, ast.Name) and x.id != n.name})
+                    out.append(("class_definition", scope, code, start, end, imps, defined, used, "python_ast"))
+                visit(n.body, scope_stack + [n.name], parent_class=scope)
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                start = min([d.lineno for d in n.decorator_list] + [n.lineno])
+                end = getattr(n, "end_lineno", n.lineno)
+                scope = ".".join(scope_stack + [n.name])
+                typ = "async_method_definition" if isinstance(n, ast.AsyncFunctionDef) and parent_class else (
+                    "async_function_definition" if isinstance(n, ast.AsyncFunctionDef) else (
+                        "method_definition" if parent_class else "function_definition"
+                    )
+                )
+                code = "\n".join(lines[start - 1 : end])
+                if len(code) <= 12000:
+                    imps = sorted(file_imports | {a.name for x in ast.walk(n) if isinstance(x, ast.Import) for a in x.names})
+                    params = [a.arg for a in n.args.args]
+                    defined = [n.name] + params
+                    used = sorted({x.id for x in ast.walk(n) if isinstance(x, ast.Name) and x.id not in defined})
+                    out.append((typ, scope, code, start, end, imps, defined, used, "python_ast"))
+                visit(n.body, scope_stack + [n.name], parent_class=parent_class)
+
+    visit(tree.body, [])
+    out.sort(key=lambda x: x[3])
 
     if not out and text.strip():
-        out = [("module", "module", text[:12000], 1, min(len(lines), 500), [], [], [], "python_ast_module")]
+        out = [("module", "module", text[:12000], 1, min(len(lines), 500), sorted(file_imports), [], [], "python_ast_module")]
     return out
 
 
 def java_chunks(text: str) -> List[tuple]:
-    """Extract Java declarations using tree-sitter-java with regex/line fallback."""
+    """Extract Java class, method, constructor, and interface declarations using tree-sitter-java."""
+    lines = text.splitlines()
     try:
         from tree_sitter import Language, Parser
         import tree_sitter_java
+
         parser = Parser(Language(tree_sitter_java.language()))
         raw = text.encode("utf-8", errors="replace")
-        root = parser.parse(raw).root_node
-        wanted = {"class_declaration", "interface_declaration", "enum_declaration", "method_declaration", "constructor_declaration"}
+        tree = parser.parse(raw)
+        root = tree.root_node
+
+        file_imports = []
+        for child in root.children:
+            if child.type == "import_declaration":
+                for c in child.children:
+                    if c.type in ("scoped_identifier", "identifier"):
+                        file_imports.append(c.text.decode("utf-8"))
+
         out = []
-        stack = [root]
-        while stack:
-            n = stack.pop()
-            if n.type in wanted:
-                code = raw[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
+
+        def visit(node, scope_stack: List[str]):
+            ntype = node.type
+            if ntype in ("class_declaration", "interface_declaration", "enum_declaration", "record_declaration"):
+                ident = next((c.text.decode("utf-8") for c in node.children if c.type == "identifier"), "Anonymous")
+                scope = ".".join(scope_stack + [ident])
+                start = node.start_point.row + 1
+                end = node.end_point.row + 1
+                code = raw[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
                 if len(code) <= 12000:
-                    name = next((raw[c.start_byte:c.end_byte].decode("utf-8", errors="replace") for c in n.children if c.type == "identifier"), "anonymous")
-                    out.append((n.type, name, code, n.start_point.row + 1, n.end_point.row + 1, [], [name], [], "tree_sitter_java"))
-            stack.extend(reversed(n.children))
+                    out.append((ntype, scope, code, start, end, file_imports, [ident], [], "tree_sitter_java"))
+                body = next((c for c in node.children if c.type in ("class_body", "interface_body", "enum_body_declarations")), None)
+                if body:
+                    for ch in body.children:
+                        visit(ch, scope_stack + [ident])
+            elif ntype in ("method_declaration", "constructor_declaration"):
+                ident = next((c.text.decode("utf-8") for c in node.children if c.type == "identifier"), "")
+                params_node = next((c for c in node.children if c.type == "formal_parameters"), None)
+                param_types = []
+                if params_node:
+                    for p in params_node.children:
+                        if p.type == "formal_parameter":
+                            t_node = next((ch for ch in p.children if ch.type in ("type_identifier", "generic_type", "scoped_type_identifier", "integral_type", "floating_point_type", "boolean_type", "void_type") or ch.type.endswith("_type")), None)
+                            if t_node:
+                                param_types.append(t_node.text.decode("utf-8"))
+                sig = f"({', '.join(param_types)})"
+                scope = ".".join(scope_stack)
+                name = f"{scope}.{ident}{sig}" if scope else f"{ident}{sig}"
+                start = node.start_point.row + 1
+                end = node.end_point.row + 1
+                code = raw[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+                if len(code) <= 12000:
+                    out.append((ntype, name, code, start, end, file_imports, [ident] + param_types, [], "tree_sitter_java"))
+            else:
+                for ch in node.children:
+                    visit(ch, scope_stack)
+
+        visit(root, [])
         if out:
+            out.sort(key=lambda x: x[3])
             return out
     except Exception:
         pass
 
-    lines = text.splitlines()
     return [
         ("fallback_block", f"lines_{i+1}_{min(i+80, len(lines))}", "\n".join(lines[i:i+80])[:12000], i+1, min(i+80, len(lines)), [], [], [], "line_fallback")
         for i in range(0, len(lines), 70) if "\n".join(lines[i:i+80]).strip()

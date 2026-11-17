@@ -32,7 +32,7 @@ const STAGES = [
 
 export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
   const [url, setUrl] = useState('');
-  const [maxChunks, setMaxChunks] = useState(500);
+  const [maxChunks, setMaxChunks] = useState(150);
   const [isValidUrl, setIsValidUrl] = useState<boolean | null>(null);
   const [validationMsg, setValidationMsg] = useState('');
 
@@ -76,7 +76,7 @@ export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
       setCurrentStageIdx(0);
       interval = setInterval(() => {
         setCurrentStageIdx((prev) => (prev < STAGES.length - 2 ? prev + 1 : prev));
-      }, 3500);
+      }, 4000);
     }
     return () => clearInterval(interval);
   }, [loading]);
@@ -100,7 +100,10 @@ export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
         onSuccess(res.repo_id);
       }
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Failed to add and index repository.';
+      let msg = err.response?.data?.detail || err.message || 'Failed to add and index repository.';
+      if (err.code === 'ECONNABORTED' || (typeof msg === 'string' && msg.toLowerCase().includes('timeout'))) {
+        msg = 'Repository indexing took longer than expected to finish on CPU. Try selecting 100 or 150 chunks for a rapid demo, or check network connectivity.';
+      }
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setLoading(false);
@@ -214,17 +217,38 @@ export const AddRepositoryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
                     {maxChunks} chunks
                   </span>
                 </div>
+                <div className="flex gap-2 mb-2">
+                  {[
+                    { label: 'Demo (100)', val: 100 },
+                    { label: 'Fast (150)', val: 150 },
+                    { label: 'Standard (300)', val: 300 },
+                    { label: 'Deep (500)', val: 500 }
+                  ].map((p) => (
+                    <button
+                      key={p.val}
+                      type="button"
+                      onClick={() => setMaxChunks(p.val)}
+                      className={`px-2 py-1 text-[11px] rounded-lg font-medium transition-colors ${
+                        maxChunks === p.val
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="range"
                   min="50"
-                  max="2000"
+                  max="1000"
                   step="50"
                   value={maxChunks}
                   onChange={(e) => setMaxChunks(Number(e.target.value))}
                   className="w-full accent-indigo-600 cursor-pointer"
                 />
                 <span className="text-[11px] text-slate-400 block mt-0.5">
-                  Controls indexing depth and dense embedding memory usage.
+                  100–150 chunks indexes in ~10-15s on CPU. Increase for deeper coverage.
                 </span>
               </div>
 

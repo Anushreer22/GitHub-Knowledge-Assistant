@@ -12,11 +12,12 @@ for d in ["raw", "metadata", "processed", "qa", "splits", "reports", "review"]:
 
 IGNORE = {
     ".git", ".venv", "venv", "node_modules", "vendor",
-    "dist", "build", "target", "out", "__pycache__"
+    "dist", "build", "target", "out", "__pycache__",
+    ".idea", ".vscode", ".gradle", ".mvn", "bin"
 }
 
-EXT = {".py": "python", ".java": "java"}
-MAX_BYTES = 1_000_000
+EXT = {".py": "python", ".pyi": "python", ".java": "java"}
+MAX_BYTES = 1_000_000  # 1 MB maximum file size
 
 SECRET = [
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),

@@ -20,7 +20,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 const client = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: 120000, // 2 minutes default
   headers: {
     'Content-Type': 'application/json',
   },
@@ -88,23 +88,33 @@ export const api = {
   },
 
   async triggerIndexing(maxChunks?: number): Promise<IndexResponse> {
-    const res = await client.post<IndexResponse>('/api/repositories/index', {
-      max_chunks: maxChunks,
-    });
+    const res = await client.post<IndexResponse>(
+      '/api/repositories/index',
+      {
+        max_chunks: maxChunks,
+      },
+      { timeout: 300000 } // 5 minutes for full corpus re-indexing
+    );
     return res.data;
   },
 
   async addRepository(params: { url: string; max_chunks?: number }): Promise<AddRepositoryResponse> {
-    const res = await client.post<AddRepositoryResponse>('/api/repositories/add', {
-      url: params.url,
-      max_chunks: params.max_chunks ?? 500,
-    });
+    const res = await client.post<AddRepositoryResponse>(
+      '/api/repositories/add',
+      {
+        url: params.url,
+        max_chunks: params.max_chunks ?? 150,
+      },
+      { timeout: 300000 } // 5 minutes for git clone, AST parse & Transformer dense encoding
+    );
     return res.data;
   },
 
   async syncRepository(repoId: string): Promise<SyncRepositoryResponse> {
     const res = await client.post<SyncRepositoryResponse>(
-      `/api/repositories/${encodeURIComponent(repoId)}/sync`
+      `/api/repositories/${encodeURIComponent(repoId)}/sync`,
+      {},
+      { timeout: 300000 } // 5 minutes for git fetch & incremental embedding
     );
     return res.data;
   },
